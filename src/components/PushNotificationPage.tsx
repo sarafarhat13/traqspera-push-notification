@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import {
   ModusWcAlert,
   ModusWcAutocomplete,
-  ModusWcBadge,
   ModusWcButton,
   ModusWcCard,
   ModusWcDivider,
@@ -341,13 +340,6 @@ export default function PushNotificationPage({ onSent }: PushNotificationPagePro
                           label={`${employee.department} · ${employee.costCenter} · ${employee.role}`}
                         />
                       </div>
-                      <ModusWcBadge
-                        size="sm"
-                        variant={employee.notificationsAllowed ? 'filled' : 'outlined'}
-                        color={employee.notificationsAllowed ? 'success' : 'warning'}
-                      >
-                        {employee.notificationsAllowed ? 'Will receive' : 'Notifications off'}
-                      </ModusWcBadge>
                     </li>
                   ))}
                 </ul>
