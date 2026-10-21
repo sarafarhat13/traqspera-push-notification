@@ -1,0 +1,29 @@
+{
+  "name": "traqspera-push-notification",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "homepage": "https://sarafarhat13.github.io/traqspera-push-notification",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
+  },
+  "dependencies": {
+    "@trimble-oss/moduswebcomponents": "1.20.0",
+    "@trimble-oss/moduswebcomponents-react": "1.20.0-react19",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@trimble-oss/modus-icons": "1.21.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "gh-pages": "^6.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}
