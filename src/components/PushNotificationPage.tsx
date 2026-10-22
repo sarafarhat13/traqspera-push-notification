@@ -1,92 +1,52 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { ModusWcTypography } from '@trimble-oss/moduswebcomponents-react';
+import { EMPLOYEES } from '../data/employees';
 import {
-  ModusWcAlert,
-  ModusWcAutocomplete,
-  ModusWcButton,
-  ModusWcCard,
-  ModusWcDivider,
-  ModusWcIcon,
-  ModusWcRadio,
-  ModusWcSelect,
-  ModusWcTextInput,
-  ModusWcTextarea,
-  ModusWcTypography,
-} from '@trimble-oss/moduswebcomponents-react';
-import { EMPLOYEES, uniqueValues, type Employee } from '../data/employees';
-import { readInputChecked, readInputString } from '../utils/modusFormEvents';
+  EMPTY_MULTI_FILTERS,
+  clearMultiFilters,
+  toggleFilterValue,
+  type MultiFilters,
+} from '../utils/employeeFilters';
+import MessageAndSendPanel from './MessageAndSendPanel';
+import RecipientPickerPanel, { type SendScope } from './RecipientPickerPanel';
 
-type RecipientMode = 'people' | 'filters';
-
-type Filters = {
-  department: string;
-  costCenter: string;
-  role: string;
+type ToastPayload = {
+  title: string;
+  description: string;
+  variant?: 'success' | 'warning' | 'info';
 };
-
-type AutocompleteItem = {
-  label: string;
-  value: string;
-  visibleInMenu: boolean;
-  selected: boolean;
-  checkbox: boolean;
-};
-
-const EMPTY_FILTERS: Filters = { department: '', costCenter: '', role: '' };
-
-const DEPARTMENTS = uniqueValues('department');
-const COST_CENTERS = uniqueValues('costCenter');
-const ROLES = uniqueValues('role');
-
-function withAll(values: string[]) {
-  return [{ label: 'All', value: '' }, ...values.map((value) => ({ label: value, value }))];
-}
-
-function employeeMatches(employee: Employee, filters: Filters): boolean {
-  const hasFilter = Boolean(filters.department || filters.costCenter || filters.role);
-  if (!hasFilter) return false;
-  if (filters.department && employee.department !== filters.department) return false;
-  if (filters.costCenter && employee.costCenter !== filters.costCenter) return false;
-  if (filters.role && employee.role !== filters.role) return false;
-  return true;
-}
-
-function audienceSummary(willReceive: number, skipped: number, mode: RecipientMode, filtersSet: boolean) {
-  const title =
-    willReceive === 0
-      ? 'No employees will receive this notification'
-      : willReceive === 1
-        ? '1 employee will receive this notification'
-        : `${willReceive} employees will receive this notification`;
-
-  let description = 'Only people who allowed notifications in the Timesheets app are included.';
-  if (mode === 'people' && willReceive === 0) {
-    description = 'Search and select the employees who should get this message.';
-  } else if (mode === 'filters' && !filtersSet) {
-    description = 'Choose a department, cost center, or role. Everyone who matches is included.';
-  } else if (skipped > 0 && willReceive === 0) {
-    description =
-      skipped === 1
-        ? '1 matching employee has not allowed notifications and will be skipped.'
-        : `${skipped} matching employees have not allowed notifications and will be skipped.`;
-  } else if (skipped > 0) {
-    description =
-      skipped === 1
-        ? '1 matching employee has not allowed notifications and will be skipped.'
-        : `${skipped} matching employees have not allowed notifications and will be skipped.`;
-  }
-
-  const variant = willReceive === 0 && skipped > 0 ? 'warning' : 'info';
-  return { title, description, variant } as const;
-}
 
 type PushNotificationPageProps = {
-  onSent: (toast: { title: string; description: string }) => void;
+  onToast: (toast: ToastPayload) => void;
 };
 
-export default function PushNotificationPage({ onSent }: PushNotificationPageProps) {
-  const [mode, setMode] = useState<RecipientMode>('people');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+function alreadyOnSendListToast(employeeIds: string[]): ToastPayload {
+  const names = employeeIds
+    .map((id) => EMPLOYEES.find((employee) => employee.id === id)?.name)
+    .filter((name): name is string => Boolean(name));
+
+  if (names.length === 1) {
+    return {
+      variant: 'warning',
+      title: 'Already on send list',
+      description: `${names[0]} is already on the send list.`,
+    };
+  }
+
+  return {
+    variant: 'warning',
+    title: 'Already on send list',
+    description: `${names.length} people are already on the send list.`,
+  };
+}
+
+export default function PushNotificationPage({ onToast }: PushNotificationPageProps) {
+  const [scope, setScope] = useState<SendScope>('custom');
+  const [recipientIds, setRecipientIds] = useState<string[]>([]);
+  const [poolCheckedIds, setPoolCheckedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [multiFilters, setMultiFilters] = useState<MultiFilters>(EMPTY_MULTI_FILTERS);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -96,73 +56,101 @@ export default function PushNotificationPage({ onSent }: PushNotificationPagePro
     [],
   );
 
-  const employeeItems = useMemo<AutocompleteItem[]>(
+  const recipientIdSet = useMemo(() => new Set(recipientIds), [recipientIds]);
+
+  const recipients = useMemo(
     () =>
-      reachableEmployees.map((employee) => ({
-        label: `${employee.name} · ${employee.role}`,
-        value: employee.id,
-        visibleInMenu: true,
-        selected: selectedIds.includes(employee.id),
-        checkbox: true,
-      })),
-    [reachableEmployees, selectedIds],
+      recipientIds
+        .map((id) => EMPLOYEES.find((e) => e.id === id))
+        .filter((e): e is NonNullable<typeof e> => Boolean(e)),
+    [recipientIds],
   );
 
-  const filterMatches = useMemo(
-    () => EMPLOYEES.filter((employee) => employeeMatches(employee, filters)),
-    [filters],
+  const canSend =
+    title.trim().length > 0 &&
+    message.trim().length > 0 &&
+    (scope === 'company' ? reachableEmployees.length > 0 : recipientIds.length > 0);
+
+  const addRecipients = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+
+      const eligibleIds = ids.filter((id) => {
+        const employee = EMPLOYEES.find((e) => e.id === id);
+        return Boolean(employee?.notificationsAllowed);
+      });
+
+      const alreadyInList = eligibleIds.filter((id) => recipientIds.includes(id));
+      const toAdd = eligibleIds.filter((id) => !recipientIds.includes(id));
+
+      if (alreadyInList.length > 0) {
+        onToast(alreadyOnSendListToast(alreadyInList));
+      }
+
+      if (toAdd.length === 0) return;
+
+      setRecipientIds((current) => [...new Set([...current, ...toAdd])]);
+    },
+    [onToast, recipientIds],
   );
 
-  const selectedEmployees = useMemo(
-    () => reachableEmployees.filter((employee) => selectedIds.includes(employee.id)),
-    [reachableEmployees, selectedIds],
+  const removeRecipient = useCallback((id: string) => {
+    setRecipientIds((current) => current.filter((item) => item !== id));
+  }, []);
+
+  const clearRecipients = useCallback(() => {
+    setRecipientIds([]);
+    setPoolCheckedIds(new Set());
+  }, []);
+
+  const togglePoolCheck = useCallback((employeeId: string, checked: boolean) => {
+    setPoolCheckedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(employeeId);
+      else next.delete(employeeId);
+      return next;
+    });
+  }, []);
+
+  const setPoolChecksForEmployees = useCallback(
+    (employeeIds: string[], checked: boolean) => {
+      setPoolCheckedIds((current) => {
+        const next = new Set(current);
+        for (const id of employeeIds) {
+          if (checked) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    },
+    [],
   );
 
-  const filtersSet = Boolean(filters.department || filters.costCenter || filters.role);
-  const matchedWillReceive = filterMatches.filter((employee) => employee.notificationsAllowed);
-  const matchedSkipped = filterMatches.filter((employee) => !employee.notificationsAllowed);
-  const recipients = mode === 'people' ? selectedEmployees : matchedWillReceive;
-  const skippedCount = mode === 'filters' ? matchedSkipped.length : 0;
-  const summary = audienceSummary(recipients.length, skippedCount, mode, filtersSet);
-
-  const titleFeedback =
-    submitted && !title.trim()
-      ? { level: 'error' as const, message: 'Enter a notification title.' }
-      : undefined;
-  const messageFeedback =
-    submitted && !message.trim()
-      ? { level: 'error' as const, message: 'Enter a notification message.' }
-      : undefined;
-
-  const canSend = recipients.length > 0 && title.trim().length > 0 && message.trim().length > 0;
-
-  function addEmployee(item: { value?: string } | null) {
-    const id = item?.value;
-    if (!id) return;
-    setSelectedIds((current) => (current.includes(id) ? current : [...current, id]));
-  }
-
-  function removeEmployee(item: { value?: string } | null) {
-    const id = item?.value;
-    if (!id) return;
-    setSelectedIds((current) => current.filter((selected) => selected !== id));
-  }
+  const toggleFilter = useCallback((dimension: keyof MultiFilters, value: string) => {
+    setMultiFilters((current) => toggleFilterValue(current, dimension, value));
+  }, []);
 
   function send() {
     setSubmitted(true);
     if (!canSend) return;
-    const count = recipients.length;
-    onSent({
+
+    const count =
+      scope === 'company' ? reachableEmployees.length : recipientIds.length;
+
+    onToast({
+      variant: 'success',
       title: 'Notification sent',
       description:
         count === 1
           ? '1 employee will receive this notification.'
           : `${count} employees will receive this notification.`,
     });
+
     setTitle('');
     setMessage('');
-    setSelectedIds([]);
-    setFilters(EMPTY_FILTERS);
+    setRecipientIds([]);
+    setPoolCheckedIds(new Set());
+    setMultiFilters(clearMultiFilters());
     setSubmitted(false);
   }
 
@@ -183,214 +171,35 @@ export default function PushNotificationPage({ onSent }: PushNotificationPagePro
         />
       </div>
 
-      <ModusWcCard bordered padding="comfortable">
-        <ModusWcTypography
-          slot="title"
-          hierarchy="h2"
-          size="lg"
-          weight="semibold"
-          label="Recipients and message"
+      <div className="two-panel-grid">
+        <RecipientPickerPanel
+          scope={scope}
+          onScopeChange={setScope}
+          multiFilters={multiFilters}
+          onToggleFilter={toggleFilter}
+          onClearFilters={() => setMultiFilters(clearMultiFilters())}
+          poolCheckedIds={poolCheckedIds}
+          onTogglePoolCheck={togglePoolCheck}
+          onSetPoolChecksForEmployees={setPoolChecksForEmployees}
+          recipientIds={recipientIdSet}
+          onAddRecipients={addRecipients}
+          onSearchAdd={(id) => addRecipients([id])}
         />
-
-        <div className="form-stack">
-          <fieldset className="choice-group">
-            <legend>
-              <ModusWcTypography
-                hierarchy="h3"
-                size="md"
-                weight="semibold"
-                label="Who should receive this?"
-              />
-            </legend>
-
-            <div className="choice-option">
-              <ModusWcRadio
-                name="recipient-mode"
-                inputId="recipient-mode-people"
-                label="Specific employees"
-                value={mode === 'people'}
-                onInputChange={(event: CustomEvent) => {
-                  if (readInputChecked(event)) setMode('people');
-                }}
-              />
-              <ModusWcTypography
-                hierarchy="p"
-                size="sm"
-                customClass="muted"
-                label="Pick one or more people. Only the employees you select are included."
-              />
-            </div>
-
-            <div className="choice-option">
-              <ModusWcRadio
-                name="recipient-mode"
-                inputId="recipient-mode-filters"
-                label="Everyone matching filters"
-                value={mode === 'filters'}
-                onInputChange={(event: CustomEvent) => {
-                  if (readInputChecked(event)) setMode('filters');
-                }}
-              />
-              <ModusWcTypography
-                hierarchy="p"
-                size="sm"
-                customClass="muted"
-                label="Use the fields below. Everyone who matches all of the filters you set is included."
-              />
-            </div>
-          </fieldset>
-
-          <div className="choice-panel" hidden={mode !== 'people'}>
-            <ModusWcAutocomplete
-              label="Employees"
-              placeholder="Search by name"
-              multiSelect
-              showMenuOnFocus
-              leaveMenuOpen
-              items={employeeItems}
-              noResults={{
-                ariaLabel: 'No employees found',
-                label: 'No employees found',
-                subLabel: 'Try another name. People who have not allowed notifications are not listed.',
-              }}
-              onItemSelect={(event) => addEmployee(event.detail)}
-              onChipRemove={(event) => removeEmployee(event.detail)}
-              onClearClick={() => setSelectedIds([])}
-            />
-            <ModusWcTypography
-              hierarchy="p"
-              size="sm"
-              customClass="muted"
-              label="People who have not allowed notifications in the Timesheets app are not listed."
-            />
-          </div>
-
-          <div className="choice-panel" hidden={mode !== 'filters'}>
-            <ModusWcSelect
-              label="Department"
-              inputId="filter-department"
-              value={filters.department}
-              options={withAll(DEPARTMENTS)}
-              onInputChange={(event: CustomEvent) => {
-                const department = readInputString(event);
-                setFilters((current) => ({ ...current, department }));
-              }}
-            />
-            <ModusWcSelect
-              label="Cost Center"
-              inputId="filter-cost-center"
-              value={filters.costCenter}
-              options={withAll(COST_CENTERS)}
-              onInputChange={(event: CustomEvent) => {
-                const costCenter = readInputString(event);
-                setFilters((current) => ({ ...current, costCenter }));
-              }}
-            />
-            <ModusWcSelect
-              label="Role"
-              inputId="filter-role"
-              value={filters.role}
-              options={withAll(ROLES)}
-              onInputChange={(event: CustomEvent) => {
-                const role = readInputString(event);
-                setFilters((current) => ({ ...current, role }));
-              }}
-            />
-            <ModusWcTypography
-              hierarchy="p"
-              size="sm"
-              customClass="muted"
-              label="Leave a field on All to ignore it. An employee must match every filter you set."
-            />
-            {filtersSet ? (
-              <div className="filter-actions">
-                <ModusWcButton
-                  variant="outlined"
-                  color="tertiary"
-                  size="sm"
-                  onButtonClick={() => setFilters(EMPTY_FILTERS)}
-                >
-                  Clear filters
-                </ModusWcButton>
-              </div>
-            ) : null}
-
-            {filterMatches.length > 0 ? (
-              <section aria-label="Matching employees">
-                <ModusWcTypography
-                  hierarchy="h4"
-                  size="sm"
-                  weight="semibold"
-                  label="Matching employees"
-                />
-                <ul className="recipient-rows">
-                  {filterMatches.map((employee) => (
-                    <li key={employee.id}>
-                      <div className="recipient-copy">
-                        <ModusWcTypography
-                          hierarchy="p"
-                          size="sm"
-                          weight="semibold"
-                          label={employee.name}
-                        />
-                        <ModusWcTypography
-                          hierarchy="p"
-                          size="xs"
-                          customClass="muted"
-                          label={`${employee.department} · ${employee.costCenter} · ${employee.role}`}
-                        />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-          </div>
-
-          <ModusWcAlert
-            variant={summary.variant}
-            alertTitle={summary.title}
-            alertDescription={summary.description}
-            role="status"
-          />
-
-          <ModusWcDivider />
-
-          <ModusWcTypography hierarchy="h3" size="md" weight="semibold" label="Message" />
-          <ModusWcTextInput
-            label="Notification Title"
-            inputId="notification-title"
-            required
-            value={title}
-            placeholder="Timesheet reminder"
-            feedback={titleFeedback}
-            onInputChange={(event: CustomEvent) => setTitle(readInputString(event))}
-          />
-          <ModusWcTextarea
-            label="Notification Message"
-            inputId="notification-message"
-            required
-            rows={5}
-            value={message}
-            placeholder="Write the message employees will see on their phone."
-            feedback={messageFeedback}
-            onInputChange={(event: CustomEvent) => setMessage(readInputString(event))}
-          />
-        </div>
-
-        <div slot="footer" className="card-footer">
-          <ModusWcButton
-            variant="filled"
-            color="primary"
-            size="sm"
-            disabled={!canSend}
-            onButtonClick={send}
-          >
-            <ModusWcIcon name="form_send" size="sm" decorative />
-            Send Notification
-          </ModusWcButton>
-        </div>
-      </ModusWcCard>
+        <MessageAndSendPanel
+          scope={scope}
+          companyEligibleCount={reachableEmployees.length}
+          recipients={recipients}
+          title={title}
+          message={message}
+          submitted={submitted}
+          canSend={canSend}
+          onTitleChange={setTitle}
+          onMessageChange={setMessage}
+          onRemoveRecipient={removeRecipient}
+          onClearRecipients={clearRecipients}
+          onSend={send}
+        />
+      </div>
     </div>
   );
 }
