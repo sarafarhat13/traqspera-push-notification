@@ -200,7 +200,7 @@ export default function RecipientPickerPanel({
           <ModusWcRadio
             name="send-scope"
             inputId="send-scope-company"
-            label="Everyone in the company (eligible only)"
+            label="Everyone in the company"
             value={scope === 'company'}
             onInputChange={(event: CustomEvent) => {
               if (readInputChecked(event)) onScopeChange('company');
