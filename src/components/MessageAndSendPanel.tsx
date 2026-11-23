@@ -119,7 +119,7 @@ export default function MessageAndSendPanel({
                   size="sm"
                   onButtonClick={onClearRecipients}
                 >
-                  Clear all
+                  Remove all
                 </ModusWcButton>
               ) : null}
             </div>
