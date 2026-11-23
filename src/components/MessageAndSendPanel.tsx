@@ -9,6 +9,7 @@ import {
 } from '@trimble-oss/moduswebcomponents-react';
 import { formatEmployeeMetaLine, type Employee } from '../data/employees';
 import type { SendScope } from './RecipientPickerPanel';
+import { EMPTY_RECIPIENTS_HELP, FIELD_LABELS } from '../constants/formCopy';
 import { readInputString } from '../utils/modusFormEvents';
 
 type MessageAndSendPanelProps = {
@@ -42,11 +43,11 @@ export default function MessageAndSendPanel({
 }: MessageAndSendPanelProps) {
   const titleFeedback =
     submitted && !title.trim()
-      ? { level: 'error' as const, message: 'Enter a notification title.' }
+      ? { level: 'error' as const, message: 'Enter a title.' }
       : undefined;
   const messageFeedback =
     submitted && !message.trim()
-      ? { level: 'error' as const, message: 'Enter a notification message.' }
+      ? { level: 'error' as const, message: 'Enter a message.' }
       : undefined;
 
   return (
@@ -54,9 +55,9 @@ export default function MessageAndSendPanel({
       <div slot="title" className="message-panel-header">
         <ModusWcTypography
           hierarchy="h2"
-          size="lg"
+          size="md"
           weight="semibold"
-          label="Message and send list"
+          label="Message"
         />
         <ModusWcButton
           variant="filled"
@@ -70,9 +71,9 @@ export default function MessageAndSendPanel({
         </ModusWcButton>
       </div>
 
-      <div className="form-stack">
+      <div className="form-stack panel-form-fields">
         <ModusWcTextInput
-          label="Notification Title"
+          label={FIELD_LABELS.notificationTitle}
           inputId="notification-title"
           required
           value={title}
@@ -81,12 +82,12 @@ export default function MessageAndSendPanel({
           onInputChange={(event: CustomEvent) => onTitleChange(readInputString(event))}
         />
         <ModusWcTextarea
-          label="Notification Message"
+          label={FIELD_LABELS.notificationMessage}
           inputId="notification-message"
           required
           rows={5}
           value={message}
-          placeholder="Write the message employees will see on their phone."
+          placeholder="Submit your timesheet by Friday."
           feedback={messageFeedback}
           onInputChange={(event: CustomEvent) => onMessageChange(readInputString(event))}
         />
@@ -98,10 +99,9 @@ export default function MessageAndSendPanel({
             aria-live="polite"
             alertTitle={
               companyEligibleCount === 1
-                ? 'Sending to 1 eligible employee company-wide'
-                : `Sending to all ${companyEligibleCount} eligible employees company-wide`
+                ? '1 employee will get this'
+                : `${companyEligibleCount} employees will get this`
             }
-            alertDescription="This send does not use the custom list. Only people who allowed notifications in the Timesheets app are included."
           />
         ) : (
           <section aria-label="Send list" className="send-list-section">
@@ -110,7 +110,7 @@ export default function MessageAndSendPanel({
                 hierarchy="h3"
                 size="md"
                 weight="semibold"
-                label={`Will be sent to (${recipients.length})`}
+                label={`Recipients (${recipients.length})`}
               />
               {recipients.length > 0 ? (
                 <ModusWcButton
@@ -125,12 +125,20 @@ export default function MessageAndSendPanel({
             </div>
 
             {recipients.length === 0 ? (
-              <ModusWcTypography
-                hierarchy="p"
-                size="sm"
-                customClass="muted"
-                label="Add people from the panel on the left, or search for someone by name."
-              />
+              <div className="send-list-empty-help">
+                <ModusWcTypography
+                  hierarchy="p"
+                  size="sm"
+                  customClass="muted"
+                  label={EMPTY_RECIPIENTS_HELP.addEmployees}
+                />
+                <ModusWcTypography
+                  hierarchy="p"
+                  size="sm"
+                  customClass="muted"
+                  label={EMPTY_RECIPIENTS_HELP.sendRequirements}
+                />
+              </div>
             ) : (
               <ul className="recipient-rows send-list">
                 {recipients.map((employee) => (

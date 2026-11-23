@@ -18,6 +18,12 @@ import {
   hasActiveFilters,
   type MultiFilters,
 } from '../utils/employeeFilters';
+import {
+  FIELD_LABELS,
+  FILTER_EMPTY_PLACEHOLDER,
+  filterSelectionPlaceholder,
+} from '../constants/formCopy';
+import { BUTTON_LABELS } from '../constants/formCopy';
 import { readInputChecked } from '../utils/modusFormEvents';
 
 export type SendScope = 'custom' | 'company';
@@ -42,6 +48,7 @@ const ROLES = uniqueValues('role');
 
 function FilterMultiSelect({
   label,
+  emptyPlaceholder,
   inputId,
   options,
   selected,
@@ -49,6 +56,7 @@ function FilterMultiSelect({
   onToggle,
 }: {
   label: string;
+  emptyPlaceholder: string;
   inputId: string;
   options: string[];
   selected: ReadonlySet<string>;
@@ -68,14 +76,15 @@ function FilterMultiSelect({
   );
 
   const placeholder =
-    selected.size === 0 ? `All ${label.toLowerCase()}` : `${selected.size} selected`;
+    selected.size === 0
+      ? emptyPlaceholder
+      : filterSelectionPlaceholder(selected.size);
 
   return (
     <ModusWcAutocomplete
       customClass="filter-multiselect"
       label={label}
       inputId={inputId}
-      size="sm"
       multiSelect
       showMenuOnFocus
       leaveMenuOpen
@@ -173,25 +182,18 @@ export default function RecipientPickerPanel({
       <ModusWcTypography
         slot="title"
         hierarchy="h2"
-        size="lg"
+        size="md"
         weight="semibold"
-        label="Find recipients"
+        label="Audience"
       />
 
       <div className="form-stack">
         <fieldset className="choice-group" role="group" aria-label="Send audience">
-          <legend>
-            <ModusWcTypography
-              hierarchy="h3"
-              size="md"
-              weight="semibold"
-              label="Audience"
-            />
-          </legend>
+          <legend className="visually-hidden">Send audience</legend>
           <ModusWcRadio
             name="send-scope"
             inputId="send-scope-custom"
-            label="Build a custom list"
+            label="Choose employees"
             value={scope === 'custom'}
             onInputChange={(event: CustomEvent) => {
               if (readInputChecked(event)) onScopeChange('custom');
@@ -213,27 +215,19 @@ export default function RecipientPickerPanel({
             hierarchy="p"
             size="sm"
             customClass="muted"
-            label="Company-wide send is selected. Use the message panel on the right. Switch back to a custom list to filter and pick individuals."
+            label="Write the message, then send. To pick employees instead, choose Choose employees."
           />
         ) : null}
 
         <div className="picker-body" hidden={!customScope}>
-          {hasActiveFilters(multiFilters) ? (
-            <div className="filter-actions">
-              <ModusWcButton
-                variant="outlined"
-                color="tertiary"
-                size="sm"
-                onButtonClick={onClearFilters}
-              >
-                Clear filters
-              </ModusWcButton>
-            </div>
-          ) : null}
-
-          <div className="filter-selects" role="group" aria-label="Employee filters">
+          <div
+            className="filter-selects panel-form-fields"
+            role="group"
+            aria-label="Employee filters"
+          >
             <FilterMultiSelect
-              label="Department"
+              label={FIELD_LABELS.department}
+              emptyPlaceholder={FILTER_EMPTY_PLACEHOLDER.department}
               inputId="filter-departments"
               options={DEPARTMENTS}
               selected={multiFilters.departments}
@@ -241,7 +235,8 @@ export default function RecipientPickerPanel({
               onToggle={(value) => onToggleFilter('departments', value)}
             />
             <FilterMultiSelect
-              label="Cost center"
+              label={FIELD_LABELS.costCenter}
+              emptyPlaceholder={FILTER_EMPTY_PLACEHOLDER.costCenter}
               inputId="filter-cost-centers"
               options={COST_CENTERS}
               selected={multiFilters.costCenters}
@@ -249,38 +244,55 @@ export default function RecipientPickerPanel({
               onToggle={(value) => onToggleFilter('costCenters', value)}
             />
             <FilterMultiSelect
-              label="Role"
+              label={FIELD_LABELS.role}
+              emptyPlaceholder={FILTER_EMPTY_PLACEHOLDER.role}
               inputId="filter-roles"
               options={ROLES}
               selected={multiFilters.roles}
               disabled={!customScope}
               onToggle={(value) => onToggleFilter('roles', value)}
             />
+            <div className="filter-helper-hint">
+              <ModusWcTypography
+                hierarchy="p"
+                size="sm"
+                customClass="muted"
+                label="Employees who match any selected value are included."
+              />
+            </div>
+            {hasActiveFilters(multiFilters) ? (
+              <div className="filter-actions">
+                <ModusWcButton
+                  variant="outlined"
+                  color="tertiary"
+                  size="sm"
+                  onButtonClick={onClearFilters}
+                >
+                  Clear filters
+                </ModusWcButton>
+              </div>
+            ) : null}
           </div>
 
-          <ModusWcTypography
-            hierarchy="p"
-            size="xs"
-            customClass="muted"
-            label="Within each group, any selected value matches. An employee must match every group that has at least one selection."
-          />
-
-          <ModusWcAutocomplete
-            label="Find someone"
-            placeholder="Search by name"
-            showMenuOnFocus
-            items={searchItems}
-            value=""
-            noResults={{
-              ariaLabel: 'No employees found',
-              label: 'No employees found',
-              subLabel: 'Only employees who allowed notifications appear here.',
-            }}
-            onItemSelect={(event) => {
-              const id = event.detail?.value;
-              if (id) onSearchAdd(id);
-            }}
-          />
+          <div className="panel-form-fields">
+            <ModusWcAutocomplete
+              label={FIELD_LABELS.findSomeone}
+              inputId="find-someone"
+              placeholder="Search by name"
+              showMenuOnFocus
+              items={searchItems}
+              value=""
+              noResults={{
+                ariaLabel: 'No employees found',
+                label: 'No employees found',
+                subLabel: 'Try another name.',
+              }}
+              onItemSelect={(event) => {
+                const id = event.detail?.value;
+                if (id) onSearchAdd(id);
+              }}
+            />
+          </div>
 
           <section className="pool-section" aria-label="Filtered employee pool">
             <div className="pool-section-header">
@@ -288,16 +300,17 @@ export default function RecipientPickerPanel({
                 hierarchy="h3"
                 size="md"
                 weight="semibold"
-                label={`People matching filters (${poolEmployees.length})`}
+                label={`Employees matching filters (${poolEmployees.length})`}
               />
               <ModusWcButton
                 variant="outlined"
                 color="primary"
                 size="sm"
+                customClass="pool-add-selected-btn"
                 disabled={selectedEligibleInPool.length === 0}
                 onButtonClick={addSelected}
               >
-                Add selected
+                {BUTTON_LABELS.addSelected}
               </ModusWcButton>
             </div>
 

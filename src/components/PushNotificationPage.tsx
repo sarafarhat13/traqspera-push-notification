@@ -167,7 +167,7 @@ export default function PushNotificationPage({ onToast }: PushNotificationPagePr
           hierarchy="p"
           size="sm"
           customClass="muted"
-          label="Send a push notification to users who have allowed notifications in the Traqspera Timesheets mobile app."
+          label="Notify employees who enabled notifications in the Traqspera Timesheets app."
         />
       </div>
 
